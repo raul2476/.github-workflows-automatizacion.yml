@@ -188,10 +188,19 @@ function appendToHistory(sessionId, role, content) {
   }
 }
 
+function withTimeout(promise, ms) {
+  return Promise.race([
+    promise,
+    new Promise((_resolve, reject) =>
+      setTimeout(() => reject(new Error(`Tiempo de espera agotado (${ms}ms)`)), ms)
+    ),
+  ]);
+}
+
 async function runTool(name, input) {
   if (name === "generar_informe_diagnostico") {
     try {
-      const result = await generarInforme(input);
+      const result = await withTimeout(generarInforme(input), 12000);
       return JSON.stringify({ ok: true, ...result });
     } catch (error) {
       console.error("Error generando informe:", error);

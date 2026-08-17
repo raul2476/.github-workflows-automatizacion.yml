@@ -136,6 +136,12 @@ async function sendReportEmail(reportText, folderUrl, clientNumber, nombreNegoci
   const transporter = nodemailer.createTransport({
     service: "gmail",
     auth: { user: sender, pass: appPassword },
+    // Si el proveedor de hosting bloquea/cuelga el puerto SMTP saliente,
+    // esto hace que falle rapido en vez de dejar el webhook colgado hasta
+    // que Twilio se rinda y el usuario nunca reciba respuesta.
+    connectionTimeout: 8000,
+    greetingTimeout: 8000,
+    socketTimeout: 8000,
   });
 
   const driveLine = folderUrl ? `\nCarpeta en Drive: ${folderUrl}\n` : "\n";
