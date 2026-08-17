@@ -190,6 +190,11 @@ async function getAgentReply(sessionId, userMessage) {
   let response = await client.messages.create({
     model: getModel(),
     max_tokens: 1024,
+    // Sin esto, Claude Sonnet 5 razona internamente por defecto y ese
+    // "thinking" consume del mismo max_tokens que la respuesta visible,
+    // cortando el texto a media frase. No lo necesitamos para un bot
+    // conversacional de WhatsApp.
+    thinking: { type: "disabled" },
     system: SYSTEM_PROMPT,
     tools: TOOLS,
     messages: getHistory(sessionId),
