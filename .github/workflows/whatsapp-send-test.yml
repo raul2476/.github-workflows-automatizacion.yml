@@ -1,0 +1,35 @@
+name: Enviar mensaje de prueba WhatsApp
+
+on:
+  workflow_dispatch:
+    inputs:
+      to:
+        description: "Numero destino en formato E.164 (ej: +56912345678)"
+        required: true
+      message:
+        description: "Texto del mensaje"
+        required: false
+        default: "Hola, soy NEX-SCAN, el agente de Next Level Ops. Este es un mensaje de prueba."
+
+jobs:
+  send-message:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Enviar mensaje de WhatsApp via Twilio
+        env:
+          TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
+          TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
+          TWILIO_WHATSAPP_NUMBER: ${{ secrets.TWILIO_WHATSAPP_NUMBER }}
+          TEST_TO_NUMBER: ${{ inputs.to }}
+          TEST_MESSAGE: ${{ inputs.message }}
+        run: npm run send-test

@@ -1,0 +1,20 @@
+{
+  "name": "whatsapp-agent-connection",
+  "version": "1.0.0",
+  "description": "Conexion del agente Next Level Ops (NEX-SCAN) a WhatsApp via Twilio",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "send-test": "node scripts/send-test-message.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.1",
+    "twilio": "^5.3.5"
+  }
+}
