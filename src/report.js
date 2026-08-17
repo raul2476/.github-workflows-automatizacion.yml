@@ -60,6 +60,21 @@ function formatClientNumber(n) {
   return `NLO-${String(n).padStart(4, "0")}`;
 }
 
+// Mientras Drive no este configurado, el correlativo vive solo en memoria
+// (se reinicia si el servidor se reinicia). Se reemplaza por el contador
+// persistente en Drive apenas GOOGLE_DRIVE_ROOT_FOLDER_ID este configurado.
+let inMemoryClientCounter = 0;
+function getNextInMemoryClientNumber() {
+  inMemoryClientCounter += 1;
+  return inMemoryClientCounter;
+}
+
+function isDriveConfigured() {
+  return Boolean(
+    process.env.GOOGLE_SERVICE_ACCOUNT_JSON && process.env.GOOGLE_DRIVE_ROOT_FOLDER_ID
+  );
+}
+
 function buildReportText(data, clientNumber) {
   return `INFORME DE DIAGNOSTICO OPERATIVO - NEX-SCAN / Next Level Ops Consulting
 Numero de cliente: ${clientNumber}
@@ -123,34 +138,48 @@ async function sendReportEmail(reportText, folderUrl, clientNumber, nombreNegoci
     auth: { user: sender, pass: appPassword },
   });
 
+  const driveLine = folderUrl ? `\nCarpeta en Drive: ${folderUrl}\n` : "\n";
+
   await transporter.sendMail({
     from: sender,
     to: contadorEmail,
     subject: `Nuevo informe de diagnostico - ${clientNumber} - ${nombreNegocio || ""}`,
-    text: `${reportText}\nCarpeta en Drive: ${folderUrl}\n`,
+    text: `${reportText}${driveLine}`,
   });
 }
 
 async function generarInforme(data) {
-  const rootFolderId = requireEnv("GOOGLE_DRIVE_ROOT_FOLDER_ID");
-  const drive = getDriveClient();
+  let clientNumber;
+  let folderUrl = null;
 
-  const clientNumberValue = await getNextClientNumber(drive, rootFolderId);
-  const clientNumber = formatClientNumber(clientNumberValue);
+  if (isDriveConfigured()) {
+    const rootFolderId = requireEnv("GOOGLE_DRIVE_ROOT_FOLDER_ID");
+    const drive = getDriveClient();
 
-  const folder = await createClientFolder(
-    drive,
-    rootFolderId,
-    clientNumber,
-    data.nombre_negocio
-  );
-  const reportText = buildReportText(data, clientNumber);
-  await uploadReportFile(drive, folder.id, reportText, clientNumber);
-  await sendReportEmail(reportText, folder.webViewLink, clientNumber, data.nombre_negocio);
+    const clientNumberValue = await getNextClientNumber(drive, rootFolderId);
+    clientNumber = formatClientNumber(clientNumberValue);
+
+    const folder = await createClientFolder(
+      drive,
+      rootFolderId,
+      clientNumber,
+      data.nombre_negocio
+    );
+    const reportText = buildReportText(data, clientNumber);
+    await uploadReportFile(drive, folder.id, reportText, clientNumber);
+    folderUrl = folder.webViewLink;
+    await sendReportEmail(reportText, folderUrl, clientNumber, data.nombre_negocio);
+  } else {
+    // Drive todavia no esta configurado (GOOGLE_SERVICE_ACCOUNT_JSON /
+    // GOOGLE_DRIVE_ROOT_FOLDER_ID ausentes) - mandamos solo el correo.
+    clientNumber = formatClientNumber(getNextInMemoryClientNumber());
+    const reportText = buildReportText(data, clientNumber);
+    await sendReportEmail(reportText, null, clientNumber, data.nombre_negocio);
+  }
 
   return {
     numero_cliente: clientNumber,
-    carpeta_drive: folder.webViewLink,
+    carpeta_drive: folderUrl,
   };
 }
 

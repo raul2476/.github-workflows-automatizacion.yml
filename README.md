@@ -31,9 +31,16 @@ lo dispara manualmente desde GitHub Actions.
 Cuando el agente termina el diagnostico (FASE 3 del prompt en `src/agent.js`),
 llama a la herramienta `generar_informe_diagnostico`, que `src/report.js`
 resuelve: asigna un numero de cliente correlativo (`NLO-0001`, `NLO-0002`,
-...) guardado en un archivo contador dentro de Drive, crea una carpeta por
-cliente con el informe (`.txt`), y envia una copia por correo usando
-`src/googleClient.js` (Google Drive API) y `nodemailer` (Gmail SMTP).
+...), envia el informe por correo (`nodemailer` / Gmail SMTP), y si Drive
+esta configurado, ademas crea una carpeta por cliente en Drive con el
+informe (`.txt`), usando `src/googleClient.js` (Google Drive API).
+
+**Drive es opcional.** Si `GOOGLE_SERVICE_ACCOUNT_JSON` o
+`GOOGLE_DRIVE_ROOT_FOLDER_ID` no estan configuradas, el informe se envia
+solo por correo y el numero de cliente se lleva en memoria (se reinicia si
+el servidor se reinicia) — util mientras se resuelve el acceso a Drive.
+Apenas se agreguen esas variables, el correlativo pasa a ser persistente en
+Drive sin tocar nada mas.
 
 ## Requisitos previos
 
