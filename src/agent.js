@@ -1,5 +1,4 @@
 const Anthropic = require("@anthropic-ai/sdk");
-const { generarInforme } = require("./report");
 
 const SYSTEM_PROMPT = `Eres NEX-SCAN, el agente de diagnostico operativo de Next Level Ops (NLO) Consulting.
 Conversas por WhatsApp con duenos u operadores de negocios (restaurantes, retail,
@@ -27,44 +26,39 @@ Pide, de a poco, estos datos:
    sirve para evaluar posibles integraciones.
 9. Promedio de ventas mensuales y promedio de compras mensuales. Si tiene mas
    de un local, pide el promedio por local (al menos los principales); si
-   tiene un solo local, pide el promedio total. Esto es para poder ofrecerle
-   mas adelante una conciliacion de ventas y pagos.
+   tiene un solo local, pide el promedio total.
 10. Su procedimiento actual para calcular y declarar el F29 (declaracion
     mensual de IVA en Chile): si lo hace de forma manual, si lo hace a traves
     de un contador o servicio contable externo, o si tiene un ERP conectado
     a ese servicio contable.
 
-FASE 3 - Diagnostico del dolor operativo
+FASE 3 - Diagnostico y recomendacion (todo dentro del chat de WhatsApp)
 11. Pregunta cual es el proceso que mas dolor de cabeza le da hoy (cierres de
     caja, facturacion, inventario, reportes en Excel, etc.).
 12. Haz COMO MAXIMO 2 preguntas de seguimiento (una por mensaje) para
     cuantificar el costo actual de ese proceso (tiempo, personas, errores,
     dinero). No mas de 2 - con esas respuestas, aunque sean aproximadas,
     ya tienes suficiente para seguir. No sigas pidiendo mas precision.
-13. Detecta cuellos de botella y procesos repetitivos automatizables con lo
-    que ya tienes.
-14. Inmediatamente despues de esas 2 preguntas de seguimiento (a mas tardar),
-    arma la recomendacion final - no la sigas postergando con mas preguntas.
-    Basate en los pilares reales del servicio de NLO:
-    basandote en los pilares reales del servicio de NLO:
-    - Conciliacion de compras contra ventas (cruzar lo comprado con lo
-      vendido para obtener el resultado real del negocio).
-    - Identificacion y control de gastos fijos (arriendo, luz, agua, etc.).
-    - Control del gasto de personal mensual.
-    - Evaluacion del proceso de cuentas por pagar y cuentas por cobrar; si el
-      negocio no lo tiene implementado, proponerlo como parte de la mejora.
+13. Inmediatamente despues de esas 2 preguntas (a mas tardar), entrega el
+    informe final DIRECTO EN EL CHAT, en un solo mensaje de WhatsApp (no
+    generes archivos, no envies correos, no uses ninguna herramienta
+    externa). Formato compacto, maximo 8-10 lineas en total:
+    - Titulo corto: "Diagnostico NEX-SCAN - [nombre del negocio]"
+    - 1 linea resumiendo el negocio (sucursales, ticket promedio, sistema
+      de pago)
+    - 1-2 lineas con el dolor detectado y su costo estimado (tiempo y/o
+      dinero)
+    - Recomendacion de automatizacion de NLO: elige solo los puntos que
+      apliquen mejor a este caso entre estos pilares (no listes los 4
+      siempre) - conciliacion de compras contra ventas, control de gastos
+      fijos (arriendo, luz, agua, etc.), control del gasto de personal
+      mensual, evaluacion/implementacion de cuentas por pagar y cobrar.
     Adapta la recomendacion al tipo de negocio: aplica tanto a negocios con
-    inventario y venta final (retail, ferreteria, local comercial, etc.) como
-    a negocios de servicios o talleres (mecanica, tornería, pintura, etc.) -
-    el enfoque de NLO se adapta a cualquier rubro.
-15. Apenas tengas todos los datos de la FASE 2 y la recomendacion final de la
-    FASE 3 armada, llama a la herramienta generar_informe_diagnostico con
-    toda la informacion recopilada (una sola vez). Cuando el resultado sea
-    exitoso, confirmale al cliente que su expediente quedo guardado
-    (mencionando el numero de cliente que te devuelva la herramienta) y que
-    se envio una copia al contador. Si la herramienta falla, disculpate,
-    dile que el equipo de NLO lo va a contactar para completar el expediente
-    manualmente, y NO vuelvas a llamar la herramienta en el mismo mensaje.
+    inventario y venta final (retail, ferreteria, local comercial, etc.)
+    como a negocios de servicios o talleres (mecanica, tornería, pintura,
+    etc.).
+14. Cierra agradeciendo y ofreciendo coordinar una reunion con el equipo de
+    NLO para avanzar.
 
 Reglas generales:
 - Dirigete al cliente siempre por su nombre y el tratamiento (Sr./Sra.) que te
@@ -72,56 +66,13 @@ Reglas generales:
 - No repitas preguntas que el cliente ya respondio.
 - Si el cliente da varios datos de una vez o se salta pasos, adaptate sin
   insistir en el orden estricto - solo asegurate de terminar teniendo todos
-  los datos de la FASE 2 antes de pasar a la recomendacion final de la FASE 3.
+  los datos de la FASE 2 antes de pasar al informe final de la FASE 3.
 
 Responde siempre en espanol, en mensajes MUY cortos, estilo WhatsApp real:
 maximo 2-4 lineas por mensaje, sin markdown pesado, sin relleno ni frases de
-cortesia largas. Ve directo al punto. Excepcion: el resumen del diagnostico y
-la recomendacion final (paso 14) pueden ser un poco mas largos, pero igual
-en frases cortas y con vinetas simples si ayuda, sin superar 6-8 lineas.`;
-
-const TOOLS = [
-  {
-    name: "generar_informe_diagnostico",
-    description:
-      "Genera el informe final del diagnostico, crea la carpeta del cliente en Google Drive con el expediente (si Drive esta configurado) y envia una copia por correo al contador. Llamala UNA SOLA VEZ, solo cuando ya completaste la FASE 2 (datos del negocio) y la FASE 3 (diagnostico y recomendacion) y tengas toda la informacion.",
-    input_schema: {
-      type: "object",
-      properties: {
-        nombre_cliente: { type: "string", description: "Nombre de la persona de contacto" },
-        tratamiento: { type: "string", description: "Sr. o Sra." },
-        nombre_negocio: { type: "string" },
-        rut_negocio: { type: "string" },
-        sucursales: { type: "string", description: "Cantidad de sucursales o locales" },
-        ticket_promedio: { type: "string" },
-        sistema_pago: { type: "string" },
-        ventas_promedio_mensual: { type: "string" },
-        compras_promedio_mensual: { type: "string" },
-        procedimiento_f29: { type: "string" },
-        proceso_dolor: {
-          type: "string",
-          description: "Proceso operativo con mas dolor de cabeza",
-        },
-        diagnostico: {
-          type: "string",
-          description: "Resumen del diagnostico: costo actual, cuellos de botella detectados",
-        },
-        recomendacion: {
-          type: "string",
-          description: "Recomendacion final de automatizacion de NLO",
-        },
-      },
-      required: [
-        "nombre_cliente",
-        "nombre_negocio",
-        "rut_negocio",
-        "proceso_dolor",
-        "diagnostico",
-        "recomendacion",
-      ],
-    },
-  },
-];
+cortesia largas. Ve directo al punto. Excepcion: el informe final (paso 13)
+puede ser un poco mas largo, pero igual en frases cortas, sin superar 8-10
+lineas.`;
 
 const MAX_HISTORY_MESSAGES = 20;
 const conversations = new Map();
@@ -156,11 +107,9 @@ function getModel() {
 
 // Si Twilio reintenta el webhook (ej. porque la respuesta tardo por un
 // cold-start) pueden llegar dos mensajes casi al mismo tiempo para el mismo
-// numero. Sin esto, ambas peticiones mutarian el historial en paralelo y
-// podrian dejar un tool_use sin su tool_result correspondiente, rompiendo
-// el formato que exige la API en la siguiente llamada. Se serializa el
-// procesamiento por numero para que la segunda peticion espere a que la
-// primera termine antes de tocar el mismo historial.
+// numero. Se serializa el procesamiento por numero para que la segunda
+// peticion espere a que la primera termine antes de tocar el mismo
+// historial, evitando que se mezclen o se pisen entre si.
 const sessionQueues = new Map();
 
 function runSerialized(sessionId, task) {
@@ -188,32 +137,6 @@ function appendToHistory(sessionId, role, content) {
   }
 }
 
-function withTimeout(promise, ms) {
-  return Promise.race([
-    promise,
-    new Promise((_resolve, reject) =>
-      setTimeout(() => reject(new Error(`Tiempo de espera agotado (${ms}ms)`)), ms)
-    ),
-  ]);
-}
-
-async function runTool(name, input) {
-  if (name === "generar_informe_diagnostico") {
-    try {
-      const result = await withTimeout(generarInforme(input), 8000);
-      return JSON.stringify({ ok: true, ...result });
-    } catch (error) {
-      console.error("Error generando informe:", error);
-      return JSON.stringify({
-        ok: false,
-        error:
-          "No se pudo generar el informe automaticamente. Avisa al cliente que el equipo de NLO lo va a contactar para completar el expediente.",
-      });
-    }
-  }
-  return JSON.stringify({ ok: false, error: `Herramienta desconocida: ${name}` });
-}
-
 function getAgentReply(sessionId, userMessage) {
   return runSerialized(sessionId, () => getAgentReplyInternal(sessionId, userMessage));
 }
@@ -227,45 +150,17 @@ async function getAgentReplyInternal(sessionId, userMessage) {
   const client = new Anthropic({ apiKey });
   appendToHistory(sessionId, "user", userMessage);
 
-  // Sin "thinking: disabled", Claude Sonnet 5 razona internamente por
-  // defecto y ese pensamiento consume del mismo max_tokens que la
-  // respuesta visible. max_tokens tambien tiene que alcanzar para el
-  // JSON de entrada de la herramienta (que incluye textos largos de
-  // diagnostico y recomendacion) ademas del mensaje de confirmacion.
-  const requestOptions = {
+  const response = await client.messages.create({
     model: getModel(),
-    max_tokens: 2048,
+    max_tokens: 1024,
+    // Sin esto, Claude Sonnet 5 razona internamente por defecto y ese
+    // "thinking" consume del mismo max_tokens que la respuesta visible,
+    // cortando el texto a media frase. No lo necesitamos para un bot
+    // conversacional de WhatsApp.
     thinking: { type: "disabled" },
     system: SYSTEM_PROMPT,
-    tools: TOOLS,
-  };
-
-  let response = await client.messages.create({
-    ...requestOptions,
     messages: getHistory(sessionId),
   });
-
-  while (response.stop_reason === "tool_use") {
-    appendToHistory(sessionId, "assistant", response.content);
-
-    const toolResults = [];
-    for (const block of response.content) {
-      if (block.type === "tool_use") {
-        const result = await runTool(block.name, block.input);
-        toolResults.push({
-          type: "tool_result",
-          tool_use_id: block.id,
-          content: result,
-        });
-      }
-    }
-    appendToHistory(sessionId, "user", toolResults);
-
-    response = await client.messages.create({
-      ...requestOptions,
-      messages: getHistory(sessionId),
-    });
-  }
 
   let reply = response.content
     .filter((block) => block.type === "text")
