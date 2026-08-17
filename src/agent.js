@@ -187,16 +187,21 @@ async function getAgentReply(sessionId, userMessage) {
   const client = new Anthropic({ apiKey });
   appendToHistory(sessionId, "user", userMessage);
 
-  let response = await client.messages.create({
+  // Sin "thinking: disabled", Claude Sonnet 5 razona internamente por
+  // defecto y ese pensamiento consume del mismo max_tokens que la
+  // respuesta visible. max_tokens tambien tiene que alcanzar para el
+  // JSON de entrada de la herramienta (que incluye textos largos de
+  // diagnostico y recomendacion) ademas del mensaje de confirmacion.
+  const requestOptions = {
     model: getModel(),
-    max_tokens: 1024,
-    // Sin esto, Claude Sonnet 5 razona internamente por defecto y ese
-    // "thinking" consume del mismo max_tokens que la respuesta visible,
-    // cortando el texto a media frase. No lo necesitamos para un bot
-    // conversacional de WhatsApp.
+    max_tokens: 2048,
     thinking: { type: "disabled" },
     system: SYSTEM_PROMPT,
     tools: TOOLS,
+  };
+
+  let response = await client.messages.create({
+    ...requestOptions,
     messages: getHistory(sessionId),
   });
 
@@ -217,19 +222,24 @@ async function getAgentReply(sessionId, userMessage) {
     appendToHistory(sessionId, "user", toolResults);
 
     response = await client.messages.create({
-      model: getModel(),
-      max_tokens: 1024,
-      system: SYSTEM_PROMPT,
-      tools: TOOLS,
+      ...requestOptions,
       messages: getHistory(sessionId),
     });
   }
 
-  const reply = response.content
+  let reply = response.content
     .filter((block) => block.type === "text")
     .map((block) => block.text)
     .join("\n")
     .trim();
+
+  if (!reply) {
+    console.warn(
+      `Respuesta vacia de Claude (stop_reason: ${response.stop_reason}) para ${sessionId}`
+    );
+    reply =
+      "Perdon, se me corto la respuesta a mitad de camino. Podrias repetir tu ultimo mensaje?";
+  }
 
   appendToHistory(sessionId, "assistant", reply);
   return reply;
