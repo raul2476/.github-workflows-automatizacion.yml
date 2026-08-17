@@ -149,6 +149,25 @@ function getModel() {
   return process.env.ANTHROPIC_MODEL || "claude-sonnet-5";
 }
 
+// Si Twilio reintenta el webhook (ej. porque la respuesta tardo por un
+// cold-start) pueden llegar dos mensajes casi al mismo tiempo para el mismo
+// numero. Sin esto, ambas peticiones mutarian el historial en paralelo y
+// podrian dejar un tool_use sin su tool_result correspondiente, rompiendo
+// el formato que exige la API en la siguiente llamada. Se serializa el
+// procesamiento por numero para que la segunda peticion espere a que la
+// primera termine antes de tocar el mismo historial.
+const sessionQueues = new Map();
+
+function runSerialized(sessionId, task) {
+  const previous = sessionQueues.get(sessionId) || Promise.resolve();
+  const run = previous.then(task, task);
+  sessionQueues.set(
+    sessionId,
+    run.catch(() => {})
+  );
+  return run;
+}
+
 function getHistory(sessionId) {
   if (!conversations.has(sessionId)) {
     conversations.set(sessionId, []);
@@ -181,7 +200,11 @@ async function runTool(name, input) {
   return JSON.stringify({ ok: false, error: `Herramienta desconocida: ${name}` });
 }
 
-async function getAgentReply(sessionId, userMessage) {
+function getAgentReply(sessionId, userMessage) {
+  return runSerialized(sessionId, () => getAgentReplyInternal(sessionId, userMessage));
+}
+
+async function getAgentReplyInternal(sessionId, userMessage) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     throw new Error("Falta la variable de entorno ANTHROPIC_API_KEY");
