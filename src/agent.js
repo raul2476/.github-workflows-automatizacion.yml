@@ -17,6 +17,30 @@ pesado), maximo 2-3 parrafos por respuesta.`;
 const MAX_HISTORY_MESSAGES = 20;
 const conversations = new Map();
 
+// Limite de mensajes por numero, para evitar que un spam/loop queme tokens
+// de la API sin control (configurable via .env).
+const RATE_LIMIT_MAX_MESSAGES = Number(process.env.RATE_LIMIT_MAX_MESSAGES) || 20;
+const RATE_LIMIT_WINDOW_MS =
+  Number(process.env.RATE_LIMIT_WINDOW_MS) || 60 * 60 * 1000; // 1 hora
+const rateLimits = new Map();
+
+function checkRateLimit(sessionId) {
+  const now = Date.now();
+  const entry = rateLimits.get(sessionId);
+
+  if (!entry || now - entry.windowStart > RATE_LIMIT_WINDOW_MS) {
+    rateLimits.set(sessionId, { count: 1, windowStart: now });
+    return true;
+  }
+
+  if (entry.count >= RATE_LIMIT_MAX_MESSAGES) {
+    return false;
+  }
+
+  entry.count += 1;
+  return true;
+}
+
 function getModel() {
   return process.env.ANTHROPIC_MODEL || "claude-sonnet-5";
 }
@@ -62,4 +86,4 @@ async function getAgentReply(sessionId, userMessage) {
   return reply;
 }
 
-module.exports = { getAgentReply };
+module.exports = { getAgentReply, checkRateLimit };

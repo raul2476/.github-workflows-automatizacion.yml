@@ -3,7 +3,7 @@ require("dotenv").config();
 const express = require("express");
 const twilio = require("twilio");
 const { MessagingResponse } = twilio.twiml;
-const { getAgentReply } = require("./agent");
+const { getAgentReply, checkRateLimit } = require("./agent");
 
 const app = express();
 // Render (y la mayoria de PaaS) terminan TLS en su proxy y reenvian por HTTP
@@ -29,6 +29,15 @@ app.post(
     const incomingMessage = req.body.Body || "";
     console.log(`Mensaje recibido de ${from}: ${incomingMessage}`);
     const twiml = new MessagingResponse();
+
+    if (!checkRateLimit(from)) {
+      console.warn(`Rate limit excedido para ${from}`);
+      twiml.message(
+        "Alcanzaste el limite de mensajes por hora. Intenta de nuevo mas tarde."
+      );
+      res.type("text/xml").send(twiml.toString());
+      return;
+    }
 
     try {
       const reply = await getAgentReply(from, incomingMessage);
