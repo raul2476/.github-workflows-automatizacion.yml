@@ -18,7 +18,7 @@ const MAX_HISTORY_MESSAGES = 20;
 const conversations = new Map();
 
 function getModel() {
-  return process.env.ANTHROPIC_MODEL || "claude-sonnet-4-5";
+  return process.env.ANTHROPIC_MODEL || "claude-sonnet-5";
 }
 
 function getHistory(sessionId) {
