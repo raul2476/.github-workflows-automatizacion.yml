@@ -200,7 +200,7 @@ function withTimeout(promise, ms) {
 async function runTool(name, input) {
   if (name === "generar_informe_diagnostico") {
     try {
-      const result = await withTimeout(generarInforme(input), 12000);
+      const result = await withTimeout(generarInforme(input), 8000);
       return JSON.stringify({ ok: true, ...result });
     } catch (error) {
       console.error("Error generando informe:", error);

@@ -174,13 +174,24 @@ async function generarInforme(data) {
     const reportText = buildReportText(data, clientNumber);
     await uploadReportFile(drive, folder.id, reportText, clientNumber);
     folderUrl = folder.webViewLink;
-    await sendReportEmail(reportText, folderUrl, clientNumber, data.nombre_negocio);
+
+    // El envio de correo (SMTP) puede tardar o colgarse; no bloqueamos la
+    // respuesta al cliente por eso - corre en segundo plano y si falla
+    // queda solo registrado en los logs.
+    sendReportEmail(reportText, folderUrl, clientNumber, data.nombre_negocio).catch(
+      (error) => console.error(`Error enviando correo del informe ${clientNumber}:`, error)
+    );
   } else {
     // Drive todavia no esta configurado (GOOGLE_SERVICE_ACCOUNT_JSON /
     // GOOGLE_DRIVE_ROOT_FOLDER_ID ausentes) - mandamos solo el correo.
     clientNumber = formatClientNumber(getNextInMemoryClientNumber());
     const reportText = buildReportText(data, clientNumber);
-    await sendReportEmail(reportText, null, clientNumber, data.nombre_negocio);
+
+    // Igual que arriba: no bloqueamos la respuesta al cliente esperando
+    // el envio del correo.
+    sendReportEmail(reportText, null, clientNumber, data.nombre_negocio).catch((error) =>
+      console.error(`Error enviando correo del informe ${clientNumber}:`, error)
+    );
   }
 
   return {
