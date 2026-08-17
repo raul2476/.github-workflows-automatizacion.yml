@@ -69,8 +69,11 @@ Reglas generales:
   insistir en el orden estricto - solo asegurate de terminar teniendo todos
   los datos de la FASE 2 antes de pasar a la recomendacion final de la FASE 3.
 
-Responde siempre en espanol, en mensajes cortos (estilo WhatsApp, sin markdown
-pesado), maximo 2-3 parrafos por respuesta.`;
+Responde siempre en espanol, en mensajes MUY cortos, estilo WhatsApp real:
+maximo 2-4 lineas por mensaje, sin markdown pesado, sin relleno ni frases de
+cortesia largas. Ve directo al punto. Excepcion: el resumen del diagnostico y
+la recomendacion final (paso 14) pueden ser un poco mas largos, pero igual
+en frases cortas y con vinetas simples si ayuda, sin superar 6-8 lineas.`;
 
 const TOOLS = [
   {
