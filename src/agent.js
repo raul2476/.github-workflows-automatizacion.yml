@@ -72,6 +72,49 @@ Reglas generales:
 Responde siempre en espanol, en mensajes cortos (estilo WhatsApp, sin markdown
 pesado), maximo 2-3 parrafos por respuesta.`;
 
+const TOOLS = [
+  {
+    name: "generar_informe_diagnostico",
+    description:
+      "Genera el informe final del diagnostico, crea la carpeta del cliente en Google Drive con el expediente (si Drive esta configurado) y envia una copia por correo al contador. Llamala UNA SOLA VEZ, solo cuando ya completaste la FASE 2 (datos del negocio) y la FASE 3 (diagnostico y recomendacion) y tengas toda la informacion.",
+    input_schema: {
+      type: "object",
+      properties: {
+        nombre_cliente: { type: "string", description: "Nombre de la persona de contacto" },
+        tratamiento: { type: "string", description: "Sr. o Sra." },
+        nombre_negocio: { type: "string" },
+        rut_negocio: { type: "string" },
+        sucursales: { type: "string", description: "Cantidad de sucursales o locales" },
+        ticket_promedio: { type: "string" },
+        sistema_pago: { type: "string" },
+        ventas_promedio_mensual: { type: "string" },
+        compras_promedio_mensual: { type: "string" },
+        procedimiento_f29: { type: "string" },
+        proceso_dolor: {
+          type: "string",
+          description: "Proceso operativo con mas dolor de cabeza",
+        },
+        diagnostico: {
+          type: "string",
+          description: "Resumen del diagnostico: costo actual, cuellos de botella detectados",
+        },
+        recomendacion: {
+          type: "string",
+          description: "Recomendacion final de automatizacion de NLO",
+        },
+      },
+      required: [
+        "nombre_cliente",
+        "nombre_negocio",
+        "rut_negocio",
+        "proceso_dolor",
+        "diagnostico",
+        "recomendacion",
+      ],
+    },
+  },
+];
+
 const MAX_HISTORY_MESSAGES = 20;
 const conversations = new Map();
 
@@ -118,6 +161,23 @@ function appendToHistory(sessionId, role, content) {
   }
 }
 
+async function runTool(name, input) {
+  if (name === "generar_informe_diagnostico") {
+    try {
+      const result = await generarInforme(input);
+      return JSON.stringify({ ok: true, ...result });
+    } catch (error) {
+      console.error("Error generando informe:", error);
+      return JSON.stringify({
+        ok: false,
+        error:
+          "No se pudo generar el informe automaticamente. Avisa al cliente que el equipo de NLO lo va a contactar para completar el expediente.",
+      });
+    }
+  }
+  return JSON.stringify({ ok: false, error: `Herramienta desconocida: ${name}` });
+}
+
 async function getAgentReply(sessionId, userMessage) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
@@ -127,12 +187,38 @@ async function getAgentReply(sessionId, userMessage) {
   const client = new Anthropic({ apiKey });
   appendToHistory(sessionId, "user", userMessage);
 
-  const response = await client.messages.create({
+  let response = await client.messages.create({
     model: getModel(),
-    max_tokens: 400,
+    max_tokens: 1024,
     system: SYSTEM_PROMPT,
+    tools: TOOLS,
     messages: getHistory(sessionId),
   });
+
+  while (response.stop_reason === "tool_use") {
+    appendToHistory(sessionId, "assistant", response.content);
+
+    const toolResults = [];
+    for (const block of response.content) {
+      if (block.type === "tool_use") {
+        const result = await runTool(block.name, block.input);
+        toolResults.push({
+          type: "tool_result",
+          tool_use_id: block.id,
+          content: result,
+        });
+      }
+    }
+    appendToHistory(sessionId, "user", toolResults);
+
+    response = await client.messages.create({
+      model: getModel(),
+      max_tokens: 1024,
+      system: SYSTEM_PROMPT,
+      tools: TOOLS,
+      messages: getHistory(sessionId),
+    });
+  }
 
   const reply = response.content
     .filter((block) => block.type === "text")
