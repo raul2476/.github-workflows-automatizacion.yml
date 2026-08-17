@@ -6,7 +6,16 @@ const { MessagingResponse } = twilio.twiml;
 const { getAgentReply } = require("./agent");
 
 const app = express();
+// Render (y la mayoria de PaaS) terminan TLS en su proxy y reenvian por HTTP
+// interno. Sin esto, Express reconstruye la URL como http:// y la validacion
+// de firma de Twilio (que exige https://) falla con 403 silenciosamente.
+app.set("trust proxy", true);
 app.use(express.urlencoded({ extended: false }));
+
+app.use((req, _res, next) => {
+  console.log(`${req.method} ${req.originalUrl}`);
+  next();
+});
 
 app.get("/health", (_req, res) => {
   res.status(200).json({ status: "ok" });
@@ -18,10 +27,12 @@ app.post(
   async (req, res) => {
     const from = req.body.From;
     const incomingMessage = req.body.Body || "";
+    console.log(`Mensaje recibido de ${from}: ${incomingMessage}`);
     const twiml = new MessagingResponse();
 
     try {
       const reply = await getAgentReply(from, incomingMessage);
+      console.log(`Respuesta generada para ${from}: ${reply}`);
       twiml.message(reply);
     } catch (error) {
       console.error("Error generando respuesta del agente:", error);
