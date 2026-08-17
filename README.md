@@ -30,8 +30,13 @@ lo dispara manualmente desde GitHub Actions.
 
 Cuando el agente termina el diagnostico (FASE 3 del prompt en `src/agent.js`),
 entrega el informe final (resumen + recomendacion de automatizacion)
-directo como mensaje de WhatsApp — no genera archivos, no envia correos ni
-usa ninguna herramienta externa.
+directo como mensaje de WhatsApp — no genera archivos ni envia correos.
+
+Si despues el cliente pide agendar una reunion (FASE 4), el agente llama a
+la herramienta `crear_lead_monday`, que `src/mondayClient.js` resuelve
+creando un item en un tablero de Monday.com (via su API GraphQL, HTTPS) con
+el nombre del negocio, y le agrega una actualizacion con el detalle del
+contacto, el diagnostico y la fecha de reunion solicitada.
 
 ## Requisitos previos
 
@@ -39,6 +44,9 @@ usa ninguna herramienta externa.
    pruebas, o un numero de WhatsApp Business aprobado para produccion).
 2. API key de Anthropic (Claude).
 3. Node.js 18+.
+4. Cuenta de Monday.com con un tablero y un Personal API Token (opcional -
+   sin esto, el agente igual funciona, solo que si falla el registro en
+   Monday se lo dice al cliente en vez de confirmarlo).
 
 ## Variables de entorno
 
@@ -55,6 +63,8 @@ Copia `.env.example` a `.env` y completa:
 | `NODE_ENV`                | En `production` se valida la firma de cada webhook         |
 | `RATE_LIMIT_MAX_MESSAGES` | Mensajes maximos por numero en la ventana (default `20`)   |
 | `RATE_LIMIT_WINDOW_MS`    | Duracion de la ventana en ms (default `3600000` = 1h)      |
+| `MONDAY_API_TOKEN`        | Personal API Token de Monday.com                            |
+| `MONDAY_BOARD_ID`         | ID del tablero donde se crean los leads                     |
 
 ## Desarrollo local
 

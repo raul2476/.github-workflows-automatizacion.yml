@@ -1,4 +1,5 @@
 const Anthropic = require("@anthropic-ai/sdk");
+const { crearLeadEnMonday } = require("./mondayClient");
 
 const SYSTEM_PROMPT = `Eres NEX-SCAN, el agente de diagnostico operativo de Next Level Ops (NLO) Consulting.
 Conversas por WhatsApp con duenos u operadores de negocios (restaurantes, retail,
@@ -60,6 +61,19 @@ FASE 3 - Diagnostico y recomendacion (todo dentro del chat de WhatsApp)
 14. Cierra agradeciendo y ofreciendo coordinar una reunion con el equipo de
     NLO para avanzar.
 
+FASE 4 - Agendar reunion (solo si el cliente la pide)
+15. Si en cualquier momento despues del informe final el cliente pide
+    agendar/coordinar una reunion (con o sin fecha/hora especifica), llama
+    a la herramienta crear_lead_monday UNA SOLA VEZ con los datos
+    disponibles (si no dio fecha/hora, deja ese campo vacio o "por
+    confirmar"). Cuando el resultado sea exitoso, confirmale que quedo
+    registrado y que el equipo de NLO lo va a contactar para coordinar. Si
+    la herramienta falla, disculpate y dile que igual anotaste su pedido y
+    el equipo lo va a contactar. NO llames la herramienta si el cliente
+    solo pregunta por la reunion sin pedirla explicitamente, y no la
+    llames mas de una vez por conversacion salvo que el cliente cambie la
+    fecha/hora despues de ya haberla agendado.
+
 Reglas generales:
 - Dirigete al cliente siempre por su nombre y el tratamiento (Sr./Sra.) que te
   indico.
@@ -73,6 +87,32 @@ maximo 2-4 lineas por mensaje, sin markdown pesado, sin relleno ni frases de
 cortesia largas. Ve directo al punto. Excepcion: el informe final (paso 13)
 puede ser un poco mas largo, pero igual en frases cortas, sin superar 8-10
 lineas.`;
+
+const TOOLS = [
+  {
+    name: "crear_lead_monday",
+    description:
+      "Crea un lead/item en Monday.com. Llamala UNA SOLA VEZ, solo cuando el cliente pide explicitamente agendar o coordinar una reunion (despues de ya haber recibido el informe final).",
+    input_schema: {
+      type: "object",
+      properties: {
+        nombre_cliente: { type: "string", description: "Nombre de la persona de contacto" },
+        tratamiento: { type: "string", description: "Sr. o Sra." },
+        nombre_negocio: { type: "string" },
+        rut_negocio: { type: "string" },
+        resumen_diagnostico: {
+          type: "string",
+          description: "Resumen breve del dolor detectado y la recomendacion dada",
+        },
+        fecha_reunion_solicitada: {
+          type: "string",
+          description: "Fecha/hora que pidio el cliente, o 'por confirmar' si no dio una",
+        },
+      },
+      required: ["nombre_cliente", "nombre_negocio", "resumen_diagnostico"],
+    },
+  },
+];
 
 const MAX_HISTORY_MESSAGES = 20;
 const conversations = new Map();
@@ -137,6 +177,44 @@ function appendToHistory(sessionId, role, content) {
   }
 }
 
+function withTimeout(promise, ms) {
+  return Promise.race([
+    promise,
+    new Promise((_resolve, reject) =>
+      setTimeout(() => reject(new Error(`Tiempo de espera agotado (${ms}ms)`)), ms)
+    ),
+  ]);
+}
+
+async function runTool(name, input, sessionId) {
+  if (name === "crear_lead_monday") {
+    try {
+      const itemName = `${input.nombre_negocio} - ${input.nombre_cliente}`;
+      const notas = [
+        `Contacto: ${[input.tratamiento, input.nombre_cliente].filter(Boolean).join(" ")}`,
+        `Telefono: ${sessionId}`,
+        input.rut_negocio ? `RUT: ${input.rut_negocio}` : null,
+        `Reunion solicitada: ${input.fecha_reunion_solicitada || "por confirmar"}`,
+        "",
+        `Diagnostico: ${input.resumen_diagnostico}`,
+      ]
+        .filter(Boolean)
+        .join("\n");
+
+      const result = await withTimeout(crearLeadEnMonday(itemName, notas), 8000);
+      return JSON.stringify({ ok: true, ...result });
+    } catch (error) {
+      console.error("Error creando lead en Monday:", error);
+      return JSON.stringify({
+        ok: false,
+        error:
+          "No se pudo registrar en Monday automaticamente. Avisa al cliente que igual anotaste su pedido y el equipo de NLO lo va a contactar.",
+      });
+    }
+  }
+  return JSON.stringify({ ok: false, error: `Herramienta desconocida: ${name}` });
+}
+
 function getAgentReply(sessionId, userMessage) {
   return runSerialized(sessionId, () => getAgentReplyInternal(sessionId, userMessage));
 }
@@ -150,17 +228,43 @@ async function getAgentReplyInternal(sessionId, userMessage) {
   const client = new Anthropic({ apiKey });
   appendToHistory(sessionId, "user", userMessage);
 
-  const response = await client.messages.create({
+  // Sin "thinking: disabled", Claude Sonnet 5 razona internamente por
+  // defecto y ese pensamiento consume del mismo max_tokens que la
+  // respuesta visible, cortando el texto a media frase.
+  const requestOptions = {
     model: getModel(),
-    max_tokens: 1024,
-    // Sin esto, Claude Sonnet 5 razona internamente por defecto y ese
-    // "thinking" consume del mismo max_tokens que la respuesta visible,
-    // cortando el texto a media frase. No lo necesitamos para un bot
-    // conversacional de WhatsApp.
+    max_tokens: 2048,
     thinking: { type: "disabled" },
     system: SYSTEM_PROMPT,
+    tools: TOOLS,
+  };
+
+  let response = await client.messages.create({
+    ...requestOptions,
     messages: getHistory(sessionId),
   });
+
+  while (response.stop_reason === "tool_use") {
+    appendToHistory(sessionId, "assistant", response.content);
+
+    const toolResults = [];
+    for (const block of response.content) {
+      if (block.type === "tool_use") {
+        const result = await runTool(block.name, block.input, sessionId);
+        toolResults.push({
+          type: "tool_result",
+          tool_use_id: block.id,
+          content: result,
+        });
+      }
+    }
+    appendToHistory(sessionId, "user", toolResults);
+
+    response = await client.messages.create({
+      ...requestOptions,
+      messages: getHistory(sessionId),
+    });
+  }
 
   let reply = response.content
     .filter((block) => block.type === "text")
