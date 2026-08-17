@@ -28,12 +28,22 @@ numero de telefono.
 API REST de Twilio; el workflow `.github/workflows/whatsapp-send-test.yml`
 lo dispara manualmente desde GitHub Actions.
 
+Cuando el agente termina el diagnostico (FASE 3 del prompt en `src/agent.js`),
+llama a la herramienta `generar_informe_diagnostico`, que `src/report.js`
+resuelve: asigna un numero de cliente correlativo (`NLO-0001`, `NLO-0002`,
+...) guardado en un archivo contador dentro de Drive, crea una carpeta por
+cliente con el informe (`.txt`), y envia una copia por correo usando
+`src/googleClient.js` (Google Drive API) y `nodemailer` (Gmail SMTP).
+
 ## Requisitos previos
 
 1. Cuenta de Twilio con el producto WhatsApp habilitado (sandbox para
    pruebas, o un numero de WhatsApp Business aprobado para produccion).
 2. API key de Anthropic (Claude).
 3. Node.js 18+.
+4. Para el informe final: una service account de Google Cloud con acceso a
+   Drive, y un App Password de la cuenta de Gmail que envia los correos
+   (ver mas abajo).
 
 ## Variables de entorno
 
@@ -48,6 +58,40 @@ Copia `.env.example` a `.env` y completa:
 | `ANTHROPIC_MODEL`         | Modelo a usar (default `claude-sonnet-4-5`)                |
 | `PORT`                    | Puerto del servidor local (default `3000`)                 |
 | `NODE_ENV`                | En `production` se valida la firma de cada webhook         |
+| `RATE_LIMIT_MAX_MESSAGES` | Mensajes maximos por numero en la ventana (default `20`)   |
+| `RATE_LIMIT_WINDOW_MS`    | Duracion de la ventana en ms (default `3600000` = 1h)      |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | JSON de la service account de Google Cloud (o en base64) |
+| `GOOGLE_DRIVE_ROOT_FOLDER_ID` | ID de la carpeta raiz en Drive donde se crean las carpetas por cliente |
+| `GMAIL_SENDER_EMAIL`      | Cuenta de Gmail que envia el informe (`nextlevelopsconsultinspa@gmail.com`) |
+| `GMAIL_APP_PASSWORD`      | App Password de esa cuenta de Gmail (no la contrasena normal) |
+| `CONTADOR_EMAIL`          | A quien se le envia el informe (`nextlevelopsconsultinspa@gmail.com`) |
+
+### Configurar Google Drive + Gmail para el informe
+
+1. **Service account de Google Cloud** (para Drive):
+   - Ve a [console.cloud.google.com](https://console.cloud.google.com) y crea
+     (o reutiliza) un proyecto.
+   - Habilita la **Google Drive API** (APIs & Services > Library).
+   - Crea una **Service Account** (IAM & Admin > Service Accounts > Create).
+   - Entra a la service account creada > pestana **Keys** > **Add Key** >
+     **JSON** — se descarga un archivo `.json`. Ese es el valor de
+     `GOOGLE_SERVICE_ACCOUNT_JSON` (pega el contenido completo del archivo).
+   - Copia el email de la service account (termina en
+     `...iam.gserviceaccount.com`).
+2. **Carpeta raiz en Drive**:
+   - En `nextlevelopsconsultinspa@gmail.com`, crea una carpeta (ej. "Clientes
+     NLO") en Google Drive.
+   - Compartila con el email de la service account del paso anterior, con
+     permiso de **Editor**.
+   - Copia el ID de la carpeta desde la URL
+     (`https://drive.google.com/drive/folders/<ESTE_ID>`) y ponlo en
+     `GOOGLE_DRIVE_ROOT_FOLDER_ID`.
+3. **App Password de Gmail** (para enviar el correo):
+   - En `nextlevelopsconsultinspa@gmail.com`, activa la verificacion en 2
+     pasos (myaccount.google.com/security) si no esta activa.
+   - Ve a **App Passwords** (myaccount.google.com/apppasswords), genera una
+     para "Mail", y usa ese valor (16 caracteres) como
+     `GMAIL_APP_PASSWORD`.
 
 ## Desarrollo local
 

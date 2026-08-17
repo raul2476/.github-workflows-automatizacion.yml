@@ -1,4 +1,5 @@
 const Anthropic = require("@anthropic-ai/sdk");
+const { generarInforme } = require("./report");
 
 const SYSTEM_PROMPT = `Eres NEX-SCAN, el agente de diagnostico operativo de Next Level Ops (NLO) Consulting.
 Conversas por WhatsApp con duenos u operadores de negocios (restaurantes, retail,
@@ -51,6 +52,14 @@ FASE 3 - Diagnostico del dolor operativo
     inventario y venta final (retail, ferreteria, local comercial, etc.) como
     a negocios de servicios o talleres (mecanica, tornería, pintura, etc.) -
     el enfoque de NLO se adapta a cualquier rubro.
+15. Apenas tengas todos los datos de la FASE 2 y la recomendacion final de la
+    FASE 3 armada, llama a la herramienta generar_informe_diagnostico con
+    toda la informacion recopilada (una sola vez). Cuando el resultado sea
+    exitoso, confirmale al cliente que su expediente quedo guardado
+    (mencionando el numero de cliente que te devuelva la herramienta) y que
+    se envio una copia al contador. Si la herramienta falla, disculpate,
+    dile que el equipo de NLO lo va a contactar para completar el expediente
+    manualmente, y NO vuelvas a llamar la herramienta en el mismo mensaje.
 
 Reglas generales:
 - Dirigete al cliente siempre por su nombre y el tratamiento (Sr./Sra.) que te
